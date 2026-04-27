@@ -1,0 +1,645 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum RoleKey {
+  NATIONAL_TREASURY_SUPER_ADMIN
+  MINISTRY_ADMIN
+  DEPARTMENT_ASSET_OFFICER
+  FLEET_OFFICER
+  ICT_OFFICER
+  HOUSING_OFFICER
+  PROCUREMENT_OFFICER
+  AUDITOR
+  EMPLOYEE_USER
+  READ_ONLY_INSPECTOR
+}
+
+enum UserStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+  DISABLED
+}
+
+enum AssetStatus {
+  ACTIVE
+  IDLE
+  UNDER_MAINTENANCE
+  TRANSFER_PENDING
+  DUE_DISPOSAL
+  DISPOSED
+  MISSING
+}
+
+enum AssetCondition {
+  NEW
+  GOOD
+  FAIR
+  POOR
+  UNSERVICEABLE
+}
+
+enum DepreciationMethod {
+  STRAIGHT_LINE
+  REDUCING_BALANCE
+  UNITS_OF_PRODUCTION
+  NONE
+}
+
+enum MaintenanceStatus {
+  RAISED
+  BUDGET_REVIEW
+  APPROVED
+  ASSIGNED
+  IN_PROGRESS
+  CLOSED
+  REJECTED
+}
+
+enum WorkOrderStatus {
+  OPEN
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum TransferStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  COMPLETED
+  REJECTED
+}
+
+enum DisposalStatus {
+  CANDIDATE
+  BOARD_OF_SURVEY
+  INSPECTION
+  AUCTION
+  SOLD
+  WRITE_OFF_APPROVED
+  CLOSED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum StockTransactionType {
+  STOCK_IN
+  STOCK_OUT
+  ADJUSTMENT
+  TRANSFER
+}
+
+enum NotificationType {
+  INFO
+  WARNING
+  APPROVAL
+  SECURITY
+}
+
+model Permission {
+  id          String           @id @default(cuid())
+  key         String           @unique
+  module      String
+  action      String
+  description String
+  roles       RolePermission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@map("permissions")
+}
+
+model Role {
+  id            String           @id @default(cuid())
+  key           RoleKey          @unique
+  name          String
+  description   String
+  permissions   RolePermission[]
+  primaryUsers  User[]           @relation("PrimaryRole")
+  userRoles     UserRole[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@map("roles")
+}
+
+model RolePermission {
+  id           String     @id @default(cuid())
+  roleId       String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  id            String       @id @default(cuid())
+  userId        String
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleId        String
+  role          Role         @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  institutionId String?
+  institution   Institution? @relation(fields: [institutionId], references: [id], onDelete: SetNull)
+  createdAt     DateTime     @default(now())
+
+  @@unique([userId, roleId, institutionId])
+  @@map("user_roles")
+}
+
+model Institution {
+  id            String        @id @default(cuid())
+  name          String        @unique
+  code          String        @unique
+  type          String
+  county        String?
+  parentId      String?
+  parent        Institution?  @relation("InstitutionHierarchy", fields: [parentId], references: [id])
+  children      Institution[] @relation("InstitutionHierarchy")
+  departments   Department[]
+  locations     Location[]
+  users         User[]
+  userRoles     UserRole[]
+  assets        Asset[]
+  housingUnits  HousingUnit[]
+  premises      Premise[]
+  stockItems    StockItem[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@map("institutions")
+}
+
+model Department {
+  id            String      @id @default(cuid())
+  name          String
+  code          String
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  users         User[]
+  assets        Asset[]
+  locations     Location[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([institutionId, code])
+  @@map("departments")
+}
+
+model Location {
+  id            String       @id @default(cuid())
+  name          String
+  code          String
+  type          String
+  address       String?
+  county        String?
+  gpsLatitude   Decimal?     @db.Decimal(10, 7)
+  gpsLongitude  Decimal?     @db.Decimal(10, 7)
+  institutionId String
+  institution   Institution  @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  departmentId  String?
+  department    Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  parentId      String?
+  parent        Location?    @relation("LocationHierarchy", fields: [parentId], references: [id])
+  children      Location[]   @relation("LocationHierarchy")
+  assets        Asset[]
+  premises      Premise[]
+  housingUnits  HousingUnit[]
+  movementsFrom AssetMovement[] @relation("MovementFromLocation")
+  movementsTo   AssetMovement[] @relation("MovementToLocation")
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@unique([institutionId, code])
+  @@map("locations")
+}
+
+model User {
+  id             String       @id @default(cuid())
+  supabaseUserId String?      @unique
+  fullName       String       @map("full_name")
+  email          String       @unique
+  phone          String?
+  payrollNo      String?      @unique @map("payroll_number")
+  status         UserStatus   @default(ACTIVE)
+  institutionId  String?
+  institution    Institution? @relation(fields: [institutionId], references: [id], onDelete: SetNull)
+  departmentId   String?
+  department     Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  primaryRoleId  String
+  primaryRole    Role         @relation("PrimaryRole", fields: [primaryRoleId], references: [id])
+  userRoles      UserRole[]
+  mfaEnabled     Boolean      @default(false)
+  lastLoginAt    DateTime?
+  assignedAssets Asset[]      @relation("AssignedUser")
+  assignments    AssetAssignment[]
+  movementsFrom  AssetMovement[] @relation("MovementFromUser")
+  movementsTo    AssetMovement[] @relation("MovementToUser")
+  maintenanceRequested MaintenanceRequest[] @relation("MaintenanceRequester")
+  maintenanceApproved  MaintenanceRequest[] @relation("MaintenanceApprover")
+  workOrdersAssigned   WorkOrder[] @relation("WorkOrderTechnician")
+  workOrdersApproved   WorkOrder[] @relation("WorkOrderApprover")
+  transfersRequested   Transfer[] @relation("TransferRequester")
+  disposalsApproved    Disposal[] @relation("DisposalApprover")
+  approvals            Approval[] @relation("ApprovalActor")
+  auditLogs            AuditLog[] @relation("AuditActor")
+  notifications        Notification[]
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+
+  @@map("users")
+}
+
+model AssetCategory {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  code        String  @unique
+  description String?
+  parentId    String?
+  parent      AssetCategory? @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children    AssetCategory[] @relation("CategoryHierarchy")
+  assets      Asset[]
+
+  @@map("asset_categories")
+}
+
+model Asset {
+  id                  String             @id @default(cuid())
+  assetCode           String             @unique
+  name                String
+  qrCode              String
+  barcode             String?
+  serialNumber        String?
+  assetTagNumber      String?
+  categoryId          String
+  category            AssetCategory      @relation(fields: [categoryId], references: [id])
+  description         String
+  institutionId       String
+  institution         Institution        @relation(fields: [institutionId], references: [id])
+  departmentId        String?
+  department          Department?        @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  locationId          String?
+  locationRef         Location?          @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  location            String
+  acquisitionDate     DateTime
+  purchaseCost        Decimal            @db.Decimal(18, 2)
+  supplier            String?
+  usefulLifeYears     Int
+  depreciationMethod  DepreciationMethod @default(STRAIGHT_LINE)
+  condition           AssetCondition     @default(GOOD)
+  status              AssetStatus        @default(ACTIVE)
+  assignedUserId      String?
+  assignedUser        User?              @relation("AssignedUser", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  warrantyExpiry      DateTime?
+  photos              String[]
+  tags                String[]
+  riskScore           Int                @default(20)
+  residualValue       Decimal            @db.Decimal(18, 2) @default(0)
+  archivedAt          DateTime?
+  assignments         AssetAssignment[]
+  movements           AssetMovement[]
+  fleet               FleetAsset?
+  housingProfile      HousingUnit?
+  furnitureProfile    FurnitureAsset?
+  ictProfile          IctAsset?
+  maintenanceRequests MaintenanceRequest[]
+  transfers           Transfer[]
+  disposals           Disposal[]
+  documents           Document[]
+  auditLogs           AuditLog[]
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  @@map("assets")
+}
+
+model AssetAssignment {
+  id         String    @id @default(cuid())
+  assetId    String
+  asset      Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
+  issuedAt   DateTime  @default(now())
+  returnedAt DateTime?
+  conditionOnIssue  AssetCondition
+  conditionOnReturn AssetCondition?
+  notes      String?
+
+  @@map("asset_assignments")
+}
+
+model AssetMovement {
+  id             String    @id @default(cuid())
+  assetId         String
+  asset           Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  fromLocationId  String?
+  fromLocation    Location? @relation("MovementFromLocation", fields: [fromLocationId], references: [id], onDelete: SetNull)
+  toLocationId    String?
+  toLocation      Location? @relation("MovementToLocation", fields: [toLocationId], references: [id], onDelete: SetNull)
+  fromUserId      String?
+  fromUser        User?     @relation("MovementFromUser", fields: [fromUserId], references: [id], onDelete: SetNull)
+  toUserId        String?
+  toUser          User?     @relation("MovementToUser", fields: [toUserId], references: [id], onDelete: SetNull)
+  reason          String
+  referenceNo     String?
+  movedAt         DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+
+  @@map("asset_movements")
+}
+
+model FleetAsset {
+  id                 String   @id @default(cuid())
+  assetId            String   @unique
+  asset              Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  registrationNumber String   @unique
+  engineNumber       String
+  chassisNumber      String
+  fuelType           String
+  driverAssigned     String?
+  mileageKm          Int
+  insuranceExpiry    DateTime
+  lastServiceDate    DateTime?
+  nextServiceDate    DateTime?
+  accidentHistory    String?
+  gpsProvider        String?
+  fuelLogs           Json     @default("[]")
+  tyreBatteryHistory Json     @default("[]")
+
+  @@map("fleet_assets")
+}
+
+model Premise {
+  id              String      @id @default(cuid())
+  premiseCode     String      @unique
+  name            String
+  premiseType     String
+  institutionId   String
+  institution     Institution @relation(fields: [institutionId], references: [id])
+  locationId      String?
+  location        Location?   @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  occupancyStatus String
+  utilityCondition String
+  gisLocation     String?
+  housingUnits    HousingUnit[]
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@map("premises")
+}
+
+model HousingUnit {
+  id              String       @id @default(cuid())
+  assetId          String?      @unique
+  asset            Asset?       @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  premiseId        String?
+  premise          Premise?     @relation(fields: [premiseId], references: [id], onDelete: SetNull)
+  institutionId    String
+  institution      Institution  @relation(fields: [institutionId], references: [id])
+  locationId       String?
+  location         Location?    @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  unitCode         String       @unique
+  unitType         String
+  occupancyStatus  String
+  occupantName     String?
+  rentDeduction    Decimal      @db.Decimal(18, 2) @default(0)
+  utilityCondition String
+  constructionProgress Int      @default(100)
+  gisLocation      String?
+  maintenanceRequests MaintenanceRequest[]
+
+  @@map("housing_units")
+}
+
+model FurnitureAsset {
+  id              String @id @default(cuid())
+  assetId          String @unique
+  asset            Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  furnitureType    String
+  employeeAssigned String?
+  movementHistory  Json   @default("[]")
+  disposalReadiness Int   @default(0)
+
+  @@map("furniture_assets")
+}
+
+model IctAsset {
+  id              String @id @default(cuid())
+  assetId          String @unique
+  asset            Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  serialNumber     String @unique
+  specs            Json
+  assignedPayrollNo String?
+  antivirusStatus  String
+  warrantyProvider String?
+  replacementCycleMonths Int @default(36)
+
+  @@map("ict_assets")
+}
+
+model StockItem {
+  id            String      @id @default(cuid())
+  sku           String      @unique
+  name          String
+  itemType      String
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id])
+  quantity      Int
+  reorderLevel  Int
+  unitCost      Decimal     @db.Decimal(18, 2)
+  supplier      String?
+  ledger        Json        @default("[]")
+  transactions  StockTransaction[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@map("stock_items")
+}
+
+model StockTransaction {
+  id          String               @id @default(cuid())
+  stockItemId String
+  stockItem    StockItem           @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+  type        StockTransactionType
+  quantity    Int
+  unitCost    Decimal              @db.Decimal(18, 2)
+  referenceNo String?
+  notes       String?
+  createdBy   String
+  createdAt   DateTime             @default(now())
+
+  @@map("stock_transactions")
+}
+
+model MaintenanceRequest {
+  id             String            @id @default(cuid())
+  requestNo      String            @unique
+  assetId         String?
+  asset           Asset?           @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  housingUnitId   String?
+  housingUnit     HousingUnit?     @relation(fields: [housingUnitId], references: [id], onDelete: SetNull)
+  requesterId     String
+  requester       User             @relation("MaintenanceRequester", fields: [requesterId], references: [id])
+  approverId      String?
+  approver        User?            @relation("MaintenanceApprover", fields: [approverId], references: [id])
+  technician      String?
+  vendor          String?
+  status          MaintenanceStatus @default(RAISED)
+  priority        String
+  description     String
+  budgetEstimate  Decimal           @db.Decimal(18, 2) @default(0)
+  actualCost      Decimal           @db.Decimal(18, 2) @default(0)
+  workOrders      WorkOrder[]
+  closedAt        DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@map("maintenance_requests")
+}
+
+model WorkOrder {
+  id                   String            @id @default(cuid())
+  workOrderNo           String            @unique
+  maintenanceRequestId  String
+  maintenanceRequest    MaintenanceRequest @relation(fields: [maintenanceRequestId], references: [id], onDelete: Cascade)
+  technicianId          String?
+  technician            User?             @relation("WorkOrderTechnician", fields: [technicianId], references: [id], onDelete: SetNull)
+  approverId            String?
+  approver              User?             @relation("WorkOrderApprover", fields: [approverId], references: [id], onDelete: SetNull)
+  status                WorkOrderStatus   @default(OPEN)
+  vendor                String?
+  estimatedCost         Decimal           @db.Decimal(18, 2) @default(0)
+  actualCost            Decimal           @db.Decimal(18, 2) @default(0)
+  startedAt             DateTime?
+  completedAt           DateTime?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  @@map("work_orders")
+}
+
+model Transfer {
+  id                 String         @id @default(cuid())
+  transferNo         String         @unique
+  assetId             String
+  asset               Asset          @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  requesterId         String
+  requester           User           @relation("TransferRequester", fields: [requesterId], references: [id])
+  fromInstitutionId   String?
+  toInstitutionId     String?
+  fromDepartmentId    String?
+  toDepartmentId      String?
+  fromUserId          String?
+  toUserId            String?
+  status              TransferStatus @default(DRAFT)
+  reason              String
+  approvedAt          DateTime?
+  completedAt         DateTime?
+  approvals           Approval[]
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  @@map("transfers")
+}
+
+model Disposal {
+  id               String         @id @default(cuid())
+  disposalNo       String         @unique
+  assetId           String
+  asset             Asset          @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  status            DisposalStatus @default(CANDIDATE)
+  boardOfSurveyRef  String?
+  inspectionReport  String?
+  auctionReference  String?
+  saleValue         Decimal        @db.Decimal(18, 2) @default(0)
+  writeOffReason    String?
+  approvedById      String?
+  approvedBy        User?          @relation("DisposalApprover", fields: [approvedById], references: [id])
+  approvals         Approval[]
+  closedAt          DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@map("disposals")
+}
+
+model Approval {
+  id          String         @id @default(cuid())
+  module      String
+  recordId    String
+  status      ApprovalStatus @default(PENDING)
+  requestedBy String
+  actorId     String?
+  actor       User?          @relation("ApprovalActor", fields: [actorId], references: [id], onDelete: SetNull)
+  transferId  String?
+  transfer    Transfer?      @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  disposalId  String?
+  disposal    Disposal?      @relation(fields: [disposalId], references: [id], onDelete: Cascade)
+  comments    String?
+  actedAt     DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@map("approvals")
+}
+
+model Document {
+  id          String   @id @default(cuid())
+  assetId     String?
+  asset       Asset?   @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  module      String?
+  recordId    String?
+  name        String
+  storagePath String
+  mimeType    String
+  sizeBytes   Int
+  uploadedBy  String
+  createdAt   DateTime @default(now())
+
+  @@map("documents")
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String?
+  user      User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType @default(INFO)
+  title     String
+  body      String
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@map("notifications")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  assetId    String?
+  asset      Asset?   @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  action     String
+  module     String
+  recordId   String
+  oldValue   Json?
+  newValue   Json?
+  ipAddress  String?  @default("0.0.0.0")
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@map("audit_logs")
+}

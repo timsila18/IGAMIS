@@ -16,6 +16,8 @@
 # next.js
 /.next/
 /.next-verify/
+/.next-fleet-verify/
+/.next-housing-verify/
 /out/
 
 # production

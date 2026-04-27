@@ -58,11 +58,11 @@ export const roles: Record<RoleKey, { name: string; permissions: string[] }> = {
   },
   MINISTRY_ADMIN: {
     name: "Ministry Admin",
-    permissions: ["dashboard:view", "assets:*", "reports:view", "users:view"],
+    permissions: ["dashboard:view", "assets:*", "fleet:view", "housing:view", "housing:update", "reports:view", "users:view"],
   },
   DEPARTMENT_ASSET_OFFICER: {
     name: "Department Asset Officer",
-    permissions: ["assets:*", "maintenance:create", "transfers:create", "reports:view"],
+    permissions: ["assets:*", "fleet:view", "housing:view", "maintenance:create", "transfers:create", "reports:view"],
   },
   FLEET_OFFICER: {
     name: "Fleet Officer",
@@ -78,19 +78,19 @@ export const roles: Record<RoleKey, { name: string; permissions: string[] }> = {
   },
   PROCUREMENT_OFFICER: {
     name: "Procurement Officer",
-    permissions: ["stores:*", "assets:create", "disposals:view", "reports:view"],
+    permissions: ["stores:*", "assets:create", "fleet:view", "housing:view", "disposals:view", "reports:view"],
   },
   AUDITOR: {
     name: "Auditor",
-    permissions: ["dashboard:view", "dashboard:national", "audit:*", "assets:view", "reports:*"],
+    permissions: ["dashboard:view", "dashboard:national", "audit:*", "assets:view", "fleet:view", "housing:view", "reports:*"],
   },
   EMPLOYEE_USER: {
     name: "Employee/User",
-    permissions: ["dashboard:view", "self:view", "maintenance:create"],
+    permissions: ["dashboard:view", "self:view", "fleet:view", "housing:view", "maintenance:create"],
   },
   READ_ONLY_INSPECTOR: {
     name: "Read Only Inspector",
-    permissions: ["dashboard:view", "dashboard:national", "assets:view", "reports:view"],
+    permissions: ["dashboard:view", "dashboard:national", "assets:view", "fleet:view", "housing:view", "reports:view"],
   },
 };
 

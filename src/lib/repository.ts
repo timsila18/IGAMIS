@@ -424,6 +424,60 @@ export async function logAssetExport(user: SessionUser | null, count: number) {
 
 export async function getNationalMetrics(user?: SessionUser | null) {
   const rows = await listAssets(user);
+  let fleetIndicators = {
+    vehiclesDueService: fleet.filter((item) => item.nextService <= new Date().toISOString().slice(0, 10)).length,
+    vehiclesDueInsurance: 0,
+    highFuelAlerts: fleet.filter((item) => item.anomaly !== "None").length,
+    fleetDisposalRecommendations: rows.filter((asset) => asset.category === "Vehicles" && (asset.condition === "POOR" || asset.status === "DUE_DISPOSAL")).length,
+  };
+  let housingIndicators = {
+    occupancyRate: Math.round((housingUnits.filter((unit) => unit.status === "Occupied").length / housingUnits.length) * 100),
+    vacantHouses: housingUnits.filter((unit) => unit.status === "Vacant").length,
+    pendingHousingMaintenance: housingUnits.filter((unit) => unit.status === "Maintenance").length,
+    projectCompletionSummary: 0,
+    poorPremises: housingUnits.filter((unit) => unit.condition === "Fair").length,
+  };
+  if (hasDatabaseUrl()) {
+    try {
+      const prisma = getPrisma();
+      const today = new Date();
+      const insuranceLimit = new Date(today);
+      insuranceLimit.setDate(insuranceLimit.getDate() + 45);
+      const [fleetRows, highFuelAlerts] = await Promise.all([
+        prisma.fleetAsset.findMany({
+          where: { archivedAt: null, asset: { archivedAt: null } },
+          include: { asset: true, serviceRecords: true, accidentLogs: true },
+        }),
+        prisma.fuelLog.count({ where: { abnormalFlag: true } }),
+      ]);
+      fleetIndicators = {
+        vehiclesDueService: fleetRows.filter((item) => (item.nextServiceDate && item.nextServiceDate <= today) || (item.nextServiceMileage && item.mileageKm >= item.nextServiceMileage)).length,
+        vehiclesDueInsurance: fleetRows.filter((item) => item.insuranceExpiry <= insuranceLimit).length,
+        highFuelAlerts,
+        fleetDisposalRecommendations: fleetRows.filter((item) => {
+          const age = new Date().getFullYear() - item.yearOfManufacture;
+          const serviceCost = item.serviceRecords.reduce((sum, service) => sum + Number(service.totalCost), 0);
+          const accidentCost = item.accidentLogs.reduce((sum, accident) => sum + Number(accident.actualRepairCost), 0);
+          return item.asset.condition === "POOR" || item.asset.condition === "UNSERVICEABLE" || item.mileageKm >= 250000 || age >= 12 || serviceCost + accidentCost > Number(item.asset.purchaseCost) * 0.35;
+        }).length,
+      };
+      const [housingRows, projectRows, pendingHousingMaintenance] = await Promise.all([
+        prisma.housingUnit.findMany({ where: { archivedAt: null }, include: { asset: true } }),
+        prisma.constructionProject.findMany(),
+        prisma.housingMaintenanceRequest.count({ where: { status: { not: "COMPLETED" } } }),
+      ]);
+      const occupiedHousing = housingRows.filter((item) => item.occupancyStatus === "OCCUPIED").length;
+      housingIndicators = {
+        occupancyRate: housingRows.length ? Math.round((occupiedHousing / housingRows.length) * 100) : 0,
+        vacantHouses: housingRows.filter((item) => item.occupancyStatus === "VACANT").length,
+        pendingHousingMaintenance,
+        projectCompletionSummary: projectRows.length ? Math.round(projectRows.reduce((sum, item) => sum + item.completionPercentage, 0) / projectRows.length) : 0,
+        poorPremises: housingRows.filter((item) => item.asset?.condition === "POOR" || item.asset?.condition === "UNSERVICEABLE" || item.utilityCondition === "Poor" || item.utilityCondition === "Critical").length,
+      };
+    } catch {
+      // Keep demo indicators when fleet tables are not migrated yet.
+    }
+  }
   const totalValue = rows.reduce((sum, asset) => sum + asset.purchaseCost, 0);
   const dueMaintenance = rows.filter((asset) => asset.status === "UNDER_MAINTENANCE").length;
   const dueDisposal = rows.filter((asset) => asset.status === "DUE_DISPOSAL").length;
@@ -452,7 +506,8 @@ export async function getNationalMetrics(user?: SessionUser | null) {
     missing,
     pendingApprovals: Math.max(1, Math.round(rows.length / 6)),
     fleetFuelAnomalies: fleet.filter((item) => item.anomaly !== "None").length,
-    occupancyRate: Math.round((housingUnits.filter((unit) => unit.status === "Occupied").length / housingUnits.length) * 100),
+    ...fleetIndicators,
+    ...housingIndicators,
     byMinistry,
     byCategory,
     maintenanceTrend: [

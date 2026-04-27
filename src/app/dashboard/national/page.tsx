@@ -1,4 +1,4 @@
-import { AlertTriangle, Banknote, Boxes, ClipboardCheck, Gavel, Wrench } from "lucide-react";
+import { AlertTriangle, Banknote, Boxes, Building2, Car, ClipboardCheck, Fuel, Gavel, Home, ShieldCheck, Wrench } from "lucide-react";
 import { DashboardCharts } from "@/components/dashboard-charts";
 import { PageFrame, PageTitle } from "@/components/page-frame";
 import { Badge } from "@/components/ui/badge";
@@ -7,7 +7,7 @@ import { formatKes } from "@/data/demo";
 import { requireUser } from "@/lib/auth";
 import { getNationalMetrics } from "@/lib/repository";
 
-const metricIcons = [Boxes, Banknote, Wrench, Gavel, AlertTriangle, ClipboardCheck];
+const metricIcons = [Boxes, Banknote, Wrench, Gavel, AlertTriangle, ClipboardCheck, Car, ShieldCheck, Fuel, Gavel, Home, Wrench, Building2, AlertTriangle];
 
 export default async function NationalDashboardPage() {
   const user = await requireUser();
@@ -19,6 +19,14 @@ export default async function NationalDashboardPage() {
     { label: "Due disposal", value: metrics.dueDisposal, detail: "Disposal candidates" },
     { label: "Missing/unverified", value: metrics.missing, detail: "Verification exceptions" },
     { label: "Pending approvals", value: metrics.pendingApprovals, detail: "Workflow queue" },
+    { label: "Vehicles due service", value: metrics.vehiclesDueService, detail: "Fleet service exposure" },
+    { label: "Insurance renewals", value: metrics.vehiclesDueInsurance, detail: "Expiring within 45 days" },
+    { label: "Fuel alerts", value: metrics.highFuelAlerts, detail: "High consumption flags" },
+    { label: "Fleet disposal watch", value: metrics.fleetDisposalRecommendations, detail: "Vehicles recommended for disposal" },
+    { label: "Vacant houses", value: metrics.vacantHouses, detail: "Housing units available" },
+    { label: "Housing maintenance", value: metrics.pendingHousingMaintenance, detail: "Open property requests" },
+    { label: "Project completion", value: `${metrics.projectCompletionSummary}%`, detail: "Average construction progress" },
+    { label: "Poor premises", value: metrics.poorPremises, detail: "Condition review needed" },
   ];
 
   return (
@@ -28,7 +36,7 @@ export default async function NationalDashboardPage() {
         title="National asset command center"
         description="Treasury-grade overview of public assets, values, maintenance exposure, disposal readiness, missing assets and audit activity."
       />
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {cards.map((card, index) => {
           const Icon = metricIcons[index];
           return (
